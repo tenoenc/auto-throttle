@@ -33,6 +33,43 @@ public class AtomicRingBuffer implements MetricRegistry {
         buffer[index] = value;
     }
 
+    /**
+     * 버퍼에 쌓인 데이터 중 읽지 않은 부분을 스냅샷에 집계합니다.
+     *
+     * @param targetSnapshot 결과를 담을 재사용 객체
+     * @param lastCursor     마지막으로 읽었던 커서위치
+     * @return 읽기를 마친 최신 커서 위치 (다음 호출 시 lastCursor로 사용)
+     */
+    public long collect(Snapshot targetSnapshot, long lastCursor) {
+        long currentCursor = cursor.get();
+
+        // 읽을 데이터가 없으면 바로 리턴
+        if (currentCursor == lastCursor) {
+            return currentCursor;
+        }
+
+        long countToRead = currentCursor - lastCursor;
+
+        // 버퍼 크기 보다 더 많이 쌓였다면(덮어쓰기 발생),
+        // 전체를 다 읽지 않고 최근 버퍼 크기만큼만 읽습니다. (오래된 데이터 버림)
+        long readStart = lastCursor;
+        if (countToRead > buffer.length) {
+            readStart = currentCursor - buffer.length;
+        }
+
+        targetSnapshot.reset(); // 기존 데이터 초기화
+
+        // 배열 순회 (Lock 없이 수행하므로 읽는 도중 값이 바뀔 수 있음 -> 허용)
+        // High Performance Sampling에서는 약간의 오차보다 속도가 중요함
+        for (long i = readStart; i < currentCursor; i++) {
+            int index = (int) (i & mask);
+            long value = buffer[index];
+            targetSnapshot.add(value);
+        }
+
+        return currentCursor;
+    }
+
     private boolean isPowerOfTwo(int number) {
         return number > 0 && (number & (number - 1)) == 0;
     }
