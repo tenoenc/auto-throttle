@@ -9,6 +9,7 @@
           <set>
             <option value="$PROJECT_DIR$" />
             <option value="$PROJECT_DIR$/auto-throttle-core" />
+            <option value="$PROJECT_DIR$/auto-throttle-starter" />
           </set>
         </option>
       </GradleProjectSettings>
