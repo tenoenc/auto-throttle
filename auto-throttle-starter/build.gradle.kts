@@ -1,7 +1,6 @@
 plugins {
-    `java-library`
-    id("org.springframework.boot") version "3.2.0" apply false
-    id("io.spring.dependency-management") version "1.1.4"
+    // 의존성 관리 플러그인만 적용 (버전은 Root에서 상속받으므로 생략)
+    id("io.spring.dependency-management")
 }
 
 dependencyManagement {
@@ -22,8 +21,4 @@ dependencies {
     annotationProcessor("org.springframework.boot:spring-boot-configuration-processor")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
-}
-
-tasks.named<Jar>("jar") {
-    enabled = true
 }

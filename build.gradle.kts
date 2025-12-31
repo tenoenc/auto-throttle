@@ -1,10 +1,12 @@
 plugins {
     java
+    id("org.springframework.boot") version "3.2.0" apply false
+    id("io.spring.dependency-management") version "1.1.4" apply false
 }
 
 allprojects {
     group = "io.github.tenoenc"
-    version = "1.0-SNAPSHOT"
+    version = "1.0.0"
 
     repositories {
         mavenCentral()
@@ -12,7 +14,8 @@ allprojects {
 }
 
 subprojects {
-    apply(plugin = "java")
+    apply(plugin = "java-library")
+    apply(plugin = "maven-publish")
 
     java {
         toolchain {
@@ -20,19 +23,15 @@ subprojects {
         }
     }
 
-    tasks.withType<JavaCompile> {
-        options.encoding = "UTF-8"
-
-        // 컴파일러에게 매개변수 이름 보존하게 하여, 나중에 Reflection/AOP 최적화 대비
-        options.compilerArgs.add("-parameters")
+    configure<PublishingExtension> {
+        publications {
+            create<MavenPublication>("maven") {
+                from(components["java"]) // Java 컴포넌트(Jar 등)를 배포 대상으로 지정
+            }
+        }
     }
 
-    dependencies {
-        testImplementation(platform("org.junit:junit-bom:5.10.0"))
-        testImplementation("org.junit.jupiter:junit-jupiter")
-    }
-
-    tasks.test {
+    tasks.withType<Test> {
         useJUnitPlatform()
     }
 }
