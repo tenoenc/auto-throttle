@@ -97,6 +97,47 @@ management:
 
 ```
 
+## Performance Benchmarks
+
+Auto Throttle is designed to be **Zero-Overhead**.
+We verified the performance using two different methods: **Microbenchmark (JMH)** and **Load Testing (k6)**.
+
+### 1. Microbenchmark (Internal Overhead)
+How much time does it take to make a decision? **Less than 20 nanoseconds.**
+
+We measured the core logic performance using JMH (Java Microbenchmark Harness).
+
+| Operation | Throughput (ops/s) | Average Time (ns/op) | Note |
+| :--- | :--- | :--- | :--- |
+| **Acquire (Decision)** | ~160,000,000 | **~6.1 ns** | Lock-Free / Zero-Allocation |
+| **Release (Feedback)** | ~75,000,000 | **~13.3 ns** | High-Performance RingBuffer |
+
+> **Result:** The overhead is negligible compared to typical HTTP request processing times (10ms+).
+
+### 2. Load Testing (Protection Capability)
+Does it actually protect the server under heavy load?
+
+We verified the effectiveness of Auto Throttle using **k6** load testing.
+
+#### Test Scenario
+- **Hardware:** Local Dev Machine (Intel i7-8700, 32GB RAM)
+- **Environment:** Spring Boot 3.2 + Java 21 (Virtual Threads)
+- **Traffic:** Ramp up to **3,000 concurrent users** (VUs)
+- **Endpoint:** Simulated slow processing (100ms delay)
+
+#### Results
+The table below compares the server performance under extreme load.
+
+| Metric | Without Auto-Throttle      | With Auto-Throttle            | Impact                          |
+| :--- |:---------------------------|:------------------------------|:--------------------------------|
+| **P95 Latency** | **995.64 ms** (Severe Lag) | **148.66 ms** (Stable)        | **6.7x Faster Response**        |
+| **System State** | Overloaded (Queue Buildup) | Healthy (Fast Failure)        | **Prevented Cascading Failure** |
+| **Load Shedding**| 0 requests rejected        | **~46,000 requests rejected** | **Effective Protection**        |
+
+> **Conclusion:**
+> Without Auto Throttle, the server suffered from a backlog, causing response times to skyrocket to ~1 second.
+> With Auto Throttle enabled, the server maintained its optimal response time (~150ms) by intelligently shedding excess load (HTTP 503), protecting existing users from degradation.
+
 ## How It Works
 
 1. **Measurement:** The library measures the Round-Trip Time (RTT) of every request using a high-performance ring buffer.
