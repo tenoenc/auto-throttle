@@ -13,9 +13,10 @@ dependencies {
 }
 
 jmh {
-    // 벤치마크 실행 설정
+    // Benchmark Configuration
+    // These settings are optimized for quick validation during development.
+    // For production-grade benchmarks, increase iterations/warmup.
     fork = 1
     warmupIterations = 1
     iterations = 1
-    // 실수로 벤치마크가 너무 오래 도는 걸 방지 (개발 단계)
 }

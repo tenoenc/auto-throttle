@@ -5,6 +5,13 @@ import jakarta.servlet.*;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 
+/**
+ * A Servlet Filter that intercepts incoming HTTP requests to apply concurrency limits.
+ * <p>
+ * This filter acts as the entry point for the Auto Throttle mechanism. It delegates
+ * the decision to proceed or reject the request to the {@link AtomicLimiter}.
+ * </p>
+ */
 public class AutoThrottleFilter implements Filter {
     private final AtomicLimiter limiter;
 
@@ -15,21 +22,23 @@ public class AutoThrottleFilter implements Filter {
     @Override
     public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain)
             throws IOException, ServletException {
-        // 1. 입장 시도
+        // 1. Attempt to acquire a permit.
         if (!limiter.acquire()) {
-            // [차단] 동시성 한도 초과
+            // [Rejected] Concurrency limit exceeded.
+            // Return HTTP 503 (Service Unavailable) to indicate temporary overload.
             HttpServletResponse httpResponse = (HttpServletResponse) response;
-            httpResponse.sendError(503, "서버가 혼잡하여 자동으로 요청이 제한되었습니다.");
-            return; // 컨트롤러 실행 안 함
+            httpResponse.sendError(503, "The server is currently overloaded. Please try again later.");
+            return; // Stop processing the request chain.
         }
 
         long start = System.nanoTime();
         try {
-            // 2. 통과 (컨트롤러 실행)
+            // 2. Proceed with the request (Execute Controller).
             chain.doFilter(request, response);
         } finally {
-            // 3. 퇴장 (성공이든 에러든 무조건 시간 기록)
-            // 나중에 여기서 HTTP 500 에러 등을 구분해서 RTT 집계에서 뺄 수도 있음
+            // 3. Release the permit and record execution time.
+            // This is executed regardless of whether the request succeeded or failed (e.g., exception).
+            // Future improvement: We might want to exclude specific HTTP errors (e.g., 500) from RTT calculations.
             limiter.release(start);
         }
     }

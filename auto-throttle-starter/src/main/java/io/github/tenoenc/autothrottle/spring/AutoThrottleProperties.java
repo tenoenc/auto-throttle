@@ -2,27 +2,43 @@ package io.github.tenoenc.autothrottle.spring;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
+/**
+ * Configuration properties for Auto Throttle.
+ * <p>
+ * These properties can be configured in {@code application.yml} or {@code application.properties}
+ * under the prefix {@code auto-throttle}.
+ * </p>
+ */
 @ConfigurationProperties(prefix = "auto-throttle")
 public class AutoThrottleProperties {
 
     /**
-     * 리미터 활성화 여부
+     * Whether to enable the auto-throttle limiter.
+     * Default: true
      */
     private boolean enabled = true;
 
     /**
-     * 윈도우 갱신 주기 (기본값: 100ms)
-     * 단위: milliseconds
+     * The time window for aggregating statistics and updating the limit.
+     * <p>
+     * Shorter windows react faster to changes but may be more volatile.
+     * Longer windows are more stable but slower to react.
+     * </p>
+     * Unit: milliseconds. Default: 100ms.
      */
     private long windowSizeMs = 100;
 
     /**
-     * Vegas 알고리즘 Alpha 값 (하한선)
+     * The alpha parameter for the Vegas algorithm (Lower Bound).
+     * Represents the minimum expected queue size.
+     * If the estimated queue is smaller than this, the limit increases.
      */
     private int alpha = 3;
 
     /**
-     * Vegas 알고리즘 Beta 값 (상한선)
+     * The beta parameter for the Vegas algorithm (Upper Bound).
+     * Represents the maximum expected queue size.
+     * If the estimated queue is larger than this, the limit decreases.
      */
     private int beta = 6;
 

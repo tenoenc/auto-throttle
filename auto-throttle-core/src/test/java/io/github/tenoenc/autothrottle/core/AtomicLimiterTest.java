@@ -7,59 +7,61 @@ import static org.junit.jupiter.api.Assertions.*;
 class AtomicLimiterTest {
 
     @Test
-    void testAdaptiveLogics() {
-        // 가짜 시간 소스 (시간을 조종하기 위함)
+    void should_AdjustLimitDynamically_BasedOnRttChanges() {
+        // Mocking time to simulate network conditions deterministically.
         TestClock clock = new TestClock();
 
-        // 기본 알고리즘 (Vegas)
+        // Using standard Vegas parameters (Alpha=3, Beta=6)
         VegasLimitAlgorithm algo = new VegasLimitAlgorithm(3, 6);
         AtomicLimiter limiter = new AtomicLimiter(algo, clock);
 
-        // [Phase 1: 학습 구간] - 서버 빠름 (2ms)
-        // 리밋(20)만큼 꽉 채워서 요청을 보냄 -> 큐 사이즈 0으로 인식 -> 리밋 증가 기대
+        // [Phase 1: Learning Phase] - Fast Server (2ms RTT)
+        // Scenario: Max out the current limit (20) with fast responses.
+        // Expectation: Queue size ~ 0 -> Limit should increase.
         for (int i = 0; i < 60; i++) {
             if (limiter.acquire()) {
-                clock.forward(2_000_000);
+                clock.forward(2_000_000); // 2ms
                 limiter.release(clock.nanoTime() - 2_000_000);
             }
         }
 
-        // 윈도우(100ms)를 넘기기 위해 시간 점프
+        // Forward time to pass the window interval (100ms)
         clock.forward(150_000_000);
 
-        // 업데이트 트리거를 위해 한 번 더 요청
+        // Trigger update
         if (limiter.acquire()) limiter.release(clock.nanoTime());
 
-        // 확인: 리밋이 초기값(20)보다 커졌어야 함 (빠르니까)
-        assertTrue(limiter.getLimit() > 20, "서버가 빠르면 리밋 증가: " + limiter.getLimit());
+        // Verification: Limit should have increased from initial 20.
+        assertTrue(limiter.getLimit() > 20, "Limit should increase when the server is fast.");
         int peakLimit = limiter.getLimit();
 
-        // [Phase 2: 과부하 구간] - 서버 느려짐 (50ms로 지연 발생)
-        // 100ms / 15ms = 6.6개 -> MIN_MINSAMPLES(5)를 넘겨서 알고리즘 동작함
-        // Vegas 계산:
-        // minRTT = 2ms
-        // currentRTT = 15ms
-        // QueueSize = Limit * (1 - 2/15) = Limit * 0.86
-        // Limit이 20이라 치면 QueueSize 17.
-        // 17 > Beta(6) 이므로 리밋 감소해야 함
+        // [Phase 2: Congestion Phase] - Slow Server (Latency spikes to 15ms)
+        // Calculation:
+        // - Window: 100ms / 15ms per req = ~6.6 samples (Enough to pass noise filter).
+        // - Vegas Logic:
+        //   - minRTT = 2ms (Learned in Phase 1)
+        //   - currentRTT = 15ms
+        //   - QueueSize = Limit * (1 - 2/15) = Limit * 0.86
+        //   - If Limit is ~20, QueueSize is ~17.
+        //   - 17 > Beta(6) -> Limit MUST decrease.
         for (int i = 0; i < 100; i++) {
             if (limiter.acquire()) {
-                clock.forward(15_000_000); // 15ms (평소보다 7.5배 느림)
+                clock.forward(15_000_000); // 15ms (7.5x slower)
                 limiter.release(clock.nanoTime() - 15_000_000);
             }
         }
 
-        // 윈도우 경과 및 업데이트 트리거
+        // Forward time and trigger update
         clock.forward(150_000_000);
         if (limiter.acquire()) limiter.release(clock.nanoTime());
 
-        // 확인: 리밋 감소 확인
+        // Verification: Limit should decrease to relieve congestion.
         int finalLimit = limiter.getLimit();
         System.out.println("Peak Limit: " + peakLimit + " -> Final Limit: " + finalLimit);
-        assertTrue(limiter.getLimit() < peakLimit, "서버가 느려지면 리밋 감소: " + limiter.getLimit());
+        assertTrue(limiter.getLimit() < peakLimit, "Limit should decrease when latency spikes.");
     }
 
-    // 테스트용 가짜 시계
+    // A simple mock implementation of NanoClock for testing.
     static class TestClock implements NanoClock {
         private long now = 0;
 

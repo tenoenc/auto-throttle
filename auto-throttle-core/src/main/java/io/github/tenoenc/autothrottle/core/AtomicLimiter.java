@@ -3,28 +3,57 @@ package io.github.tenoenc.autothrottle.core;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
+/**
+ * A concurrency limiter that dynamically adjusts the limit based on RTT measurements.
+ * <p>
+ * This class acts as a gatekeeper, allowing or rejecting requests based on the current
+ * concurrency limit. It uses a {@link LimitAlgorithm} (e.g., TCP Vegas) to calculate
+ * the optimal limit by analyzing the Round-Trip Time (RTT) of recent requests.
+ * </p>
+ * <p>
+ * Ideally, this class is designed to be lock-free for the hot path (acquire/release)
+ * to minimize overhead in high-throughput scenarios.
+ * </p>
+ */
 public class AtomicLimiter {
+
     private final LimitAlgorithm algorithm;
     private final AtomicRingBuffer ringBuffer;
     private final Snapshot snapshot;
     private final NanoClock clock;
 
-    // volatile: 여러 스레드가 동시에 읽을 때 항상 최신 값을 보장
+    /**
+     * The current concurrency limit.
+     * Marked as volatile to ensure visibility across threads without locking.
+     */
     private volatile int limit;
 
-    // 현재 처리 중인 요청 수 (동시성 제어의 핵심)
+    /**
+     * The number of requests currently being processed (in-flight).
+     */
     private final AtomicInteger currentInflight = new AtomicInteger(0);
 
-    // 마지막으로 리밋을 갱신한 시간 (Window 체크용)
+    /**
+     * The timestamp of the last limit update.
+     * Used to enforce the update window interval.
+     */
     private final AtomicLong lastUpdateTime;
 
-    // 리밋 갱신 중인지 표시하는 플래그 (스핀락 역할)
+    /**
+     * A spinlock flag to ensure only one thread updates the limit at a time.
+     * 0 = unlocked, 1 = locked.
+     */
     private final AtomicInteger updateLock = new AtomicInteger(0);
 
-    // 통계 수집 커서
+    /**
+     * Cursor tracking the last read position in the ring buffer.
+     */
     private long lastCursor = 0;
 
-    // 설정값: 윈도우 크기 (100ms = 100,000,000ns)
+    /**
+     * The interval at which the limit is recalculated.
+     * Default: 100ms (in nanoseconds).
+     */
     private static final long WINDOW_INTERVAL_NS = 100_000_000;
 
     public AtomicLimiter(LimitAlgorithm algorithm, NanoClock clock) {
@@ -33,87 +62,95 @@ public class AtomicLimiter {
         this.ringBuffer = new AtomicRingBuffer(4096);
         this.snapshot = new Snapshot();
 
-        // 초기 리밋은 넉넉하게 시작 (Slow Start는 나중에 구현)
+        // Initial limit; ideally set conservatively to allow for slow-start.
         this.limit = 20;
         this.lastUpdateTime = new AtomicLong(clock.nanoTime());
     }
 
     /**
-     * 진입 요청 (Acquire)
+     * Attempts to acquire a permit to proceed with a request.
      *
-     * @return true=통과, false=차단 (Fast Failure)
+     * @return {@code true} if the request is allowed (within limit);
+     * {@code false} if the request is rejected (limit exceeded).
      */
     public boolean acquire() {
         while (true) {
             int current = currentInflight.get();
 
-            // 1. 한도 초과 체크
+            // 1. Fast Failure: Check if the limit is exceeded.
             if (current >= limit) {
                 return false;
             }
 
-            // 2. 카운터 증가 (CAS)
-            // 동시에 여러 스레드가 들어올 때, 안전하게 하나만 증가시킴
+            // 2. CAS (Compare-And-Swap): Safely increment the in-flight counter.
+            // If strictly FIFO is not required, a simple CAS loop is efficient.
             if (currentInflight.compareAndSet(current, current + 1)) {
                 return true;
             }
-            // CAS 실패 시 루프를 돌며 재시도 (매우 짧은 순간이라 성능 영향 미비)
+            // CAS failed (contention); retry immediately.
         }
     }
 
     /**
-     * 완료 처리 및 피드백 (Release)
+     * Releases a permit and records the execution metrics.
+     * This method also triggers the limit update process (Piggybacking).
      *
-     * @param startNanos acquire 성공 시점의 시간
+     * @param startNanos The timestamp when the permit was acquired.
      */
     public void release(long startNanos) {
-        // 1. 처리 중 카운터 감소
+        // 1. Decrement the in-flight counter.
         currentInflight.decrementAndGet();
 
         long now = clock.nanoTime();
         long duration = now - startNanos;
 
-        // 2. 수행 시간(RTT) 기록 (Zero-Allocation)
+        // 2. Record RTT (Zero-Allocation).
         ringBuffer.add(duration);
 
-        // 3. 리밋 갱신 트리거 (Piggybacking)
-        // 별도 스레드 없이, 요청을 마친 스레드가 시간이 됐는지 확인하고 갱신함
+        // 3. Try to update the limit (Piggybacking strategy).
+        // Instead of a background thread, the worker thread performs the update.
         tryUpdateLimit(now);
     }
 
+    /**
+     * Checks if the window has elapsed and updates the limit if necessary.
+     * Uses a non-blocking try-lock pattern.
+     *
+     * @param now The current timestamp.
+     */
     private void tryUpdateLimit(long now) {
         long lastUpdate = lastUpdateTime.get();
 
-        // 윈도우 시간이 안 지났으면 패스 (빠른 리턴)
+        // Fast return if the window interval has not yet passed.
         if (now - lastUpdate < WINDOW_INTERVAL_NS) {
             return;
         }
 
-        // 윈도우가 지났다면, 오직 한 스레드가 갱신 권한 획득 (CAS)
+        // Try to acquire the update lock (CAS).
         if (updateLock.compareAndSet(0, 1)) {
             try {
-                // 더블 체크 (그 사이 다른 스레드가 갱신했을 수도 있음)
+                // Double-check locking: verify timestamp again in case another thread just updated it.
                 if (now - lastUpdateTime.get() < WINDOW_INTERVAL_NS) {
                     return;
                 }
 
-                // 4. 통계 수집 & 알고리즘 실행
+                // 4. Collect metrics and calculate the new limit.
                 lastCursor = ringBuffer.collect(snapshot, lastCursor);
                 int newLimit = algorithm.update(limit, snapshot);
 
-                // 5. 리밋 반영 (volatile write)
+                // 5. Apply the new limit (volatile write).
                 this.limit = newLimit;
 
-                // 시간 갱신
+                // Update the last update timestamp.
                 lastUpdateTime.set(now);
             } finally {
-                // 락 해제
+                // Release the lock.
                 updateLock.set(0);
             }
         }
     }
 
-    // 테스트/모니터링용
+    // Getters for monitoring and testing
     public int getLimit() { return limit; }
     public int getInflight() { return currentInflight.get(); }
 }

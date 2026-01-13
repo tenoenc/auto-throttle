@@ -1,16 +1,50 @@
 package io.github.tenoenc.autothrottle.core;
 
+/**
+ * A concurrency control algorithm based on TCP Vegas.
+ * <p>
+ * This algorithm estimates the congestion level of the system by comparing the
+ * current Round-Trip Time (RTT) with the minimum observed RTT (physical baseline).
+ * It attempts to keep the estimated "queue size" (virtual backlog) within a
+ * specific range [alpha, beta].
+ * </p>
+ */
 public class VegasLimitAlgorithm implements LimitAlgorithm {
-    private final int alpha; // 큐사이즈 하향선 (이보다 적으면 Limit 증가)
-    private final int beta; // 큐사이즈 상한선 (이보다 많으면 Limit 감소)
 
-    // 서버가 경험한 '물리적 한계 속도(가증 빠른 응답)'를 기억합니다.
+    /**
+     * The lower bound of the target queue size.
+     * If the estimated queue size is less than this value, the limit increases
+     * to utilize more capacity.
+     */
+    private final int alpha;
+
+    /**
+     * The upper bound of the target queue size.
+     * If the estimated queue size exceeds this value, the limit decreases
+     * to prevent latency degradation.
+     */
+    private final int beta;
+
+    /**
+     * The minimum RTT observed so far (representing the physical processing time
+     * without queuing delay).
+     */
     private double minRtt = Double.MAX_VALUE;
 
+    /**
+     * Creates a Vegas algorithm with default parameters (alpha=3, beta=6).
+     * This range typically provides a good balance between throughput and latency.
+     */
     public VegasLimitAlgorithm() {
-        this(3, 6); // 기본값: 대기열에 3~6개 정도 쌓이는 상태를 '최적'으로 간주
+        this(3, 6);
     }
 
+    /**
+     * Creates a Vegas algorithm with custom parameters.
+     *
+     * @param alpha The lower bound threshold.
+     * @param beta  The upper bound threshold.
+     */
     public VegasLimitAlgorithm(int alpha, int beta) {
         this.alpha = alpha;
         this.beta = beta;
@@ -18,7 +52,7 @@ public class VegasLimitAlgorithm implements LimitAlgorithm {
 
     @Override
     public int update(int currentLimit, Snapshot snapshot) {
-        // 데이터가 신뢰할 수 없으면(노이즈) 변경 없이 리턴
+        // 1. Noise Filtering: Skip update if the data is statistically insignificant.
         if (!snapshot.isReliable()) {
             return currentLimit;
         }
@@ -26,28 +60,30 @@ public class VegasLimitAlgorithm implements LimitAlgorithm {
         double currentAvgRtt = snapshot.getAverage();
         if (currentAvgRtt <= 0) return currentLimit;
 
-        // 1. 최소 Rtt 학습 (서버의 최고 성능 갱신)
+        // 2. Learn Minimum RTT (Physical Baseline).
+        // Since the app might become faster (e.g., JIT compilation), minRtt tracks the lowest seen value.
         if (currentAvgRtt < minRtt) {
             minRtt = currentAvgRtt;
         }
 
-        // 2. Vegas 공식: 지연 시간을 기반으로 '가상의 대기열 크기' 추정
-        // 예: 리밋이 100인데, 평소보다 2배 느려졌다? -> 큐에 50개가 쌓인 셈이다.
+        // 3. Estimate Queue Size using Little's Law principles.
+        // QueueSize = Limit * (1 - minRTT / currentRTT)
+        // e.g., If RTT doubles (current = 2 * min), roughly half the requests are queued.
         double queueSize = currentLimit * (1 - minRtt / currentAvgRtt);
 
-        // 3. 임계값(Alpha/Beta)에 따른 제어
+        // 4. Adjust Limit based on congestion thresholds.
         int newLimit = currentLimit;
 
         if (queueSize < alpha) {
-            // 너무 한가함 (대기열이 텅 빔) -> Limit 증가
+            // Under-utilized: The queue is empty or small. Increase limit.
             newLimit = currentLimit + 1;
         } else if (queueSize > beta) {
-            // 너무 혼잡함 (대기열 폭발 직전) -> Limit 감소
+            // Congested: The queue is growing too large. Decrease limit.
             newLimit = currentLimit - 1;
         }
-        // alpha ~ beta 사이면 현상 유지 (Stable)
+        // If alpha <= queueSize <= beta, the system is in a stable state. Keep current limit.
 
-        // 안전장치: 최소 1개의 요청은 받아야 함
+        // Safety Guard: Ensure at least one request can be processed.
         return Math.max(1, newLimit);
     }
 }

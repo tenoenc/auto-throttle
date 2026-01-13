@@ -1,15 +1,23 @@
 package io.github.tenoenc.autothrottle.core;
 
 /**
- * 특정 구간의 통계 데이터를 담는 컨테이너
- * GC 방지를 위해 매번 생성하지 않고, reset() 후 값을 채워 재사용합니다.
+ * A container for statistical data collected over a specific time window.
+ * <p>
+ * <strong>Design Note:</strong> To minimize Garbage Collection (GC) overhead
+ * in high-throughput scenarios, this object is designed to be <b>reused</b>.
+ * Instead of creating a new instance for every window, the consumer should
+ * call {@link #reset()} and repopulate the data.
+ * </p>
  */
 public class Snapshot {
-    // 노이즈 필터링 상수 정의
-    // 최소한 이 개수 이상의 표본이 있어야 통계로 인정함
+
+    /**
+     * The minimum number of samples required to consider the statistics reliable.
+     * Prevents the algorithm from reacting to noise or outliers in low-traffic situations.
+     */
     private static final int MIN_SAMPLES = 5;
 
-    // public 필드로 직접 접근하여 Getter/Setter 오버헤드 제거
+    // Public fields are used intentionally to eliminate Getter/Setter overhead in hot paths.
     public long totalCount;
     public long totalSum;
     public long min;
@@ -19,6 +27,10 @@ public class Snapshot {
         reset();
     }
 
+    /**
+     * Resets all statistical data to their initial states.
+     * Should be called before reusing this object for a new window.
+     */
     public void reset() {
         this.totalCount = 0;
         this.totalSum = 0;
@@ -26,6 +38,11 @@ public class Snapshot {
         this.max = Long.MIN_VALUE;
     }
 
+    /**
+     * Adds a new value to the snapshot and updates statistics.
+     *
+     * @param value The value to add.
+     */
     public void add(long value) {
         this.totalCount++;
         this.totalSum += value;
@@ -34,8 +51,10 @@ public class Snapshot {
     }
 
     /**
-     * 현재 스냅샷이 제어 알고리즘에 사용할 만큼 충분한 데이터를 가졌는지 판단.
-     * 데이터가 너무 적으면(노이즈) 알고리즘을 돌리지 않고 이전 상태를 유지해야 함.
+     * Determines if this snapshot contains enough data to be statistically significant.
+     *
+     * @return {@code true} if the sample count meets or exceeds the minimum threshold;
+     * {@code false} otherwise (noise).
      */
     public boolean isReliable() {
         return totalCount >= MIN_SAMPLES;
@@ -46,6 +65,12 @@ public class Snapshot {
         return "Snapshot{cnt=" + totalCount + ", avg=" + getAverage() + ", valid=" + isReliable() + "}";
     }
 
-    // 평균 계산 (나눗셈 0 방지)
-    public double getAverage() { return totalCount == 0 ? 0 : (double) totalSum / totalCount; }
+    /**
+     * Calculates the arithmetic mean.
+     *
+     * @return The average value, or 0.0 if no samples exist.
+     */
+    public double getAverage() {
+        return totalCount == 0 ? 0 : (double) totalSum / totalCount;
+    }
 }
