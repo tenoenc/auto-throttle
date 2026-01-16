@@ -33,11 +33,6 @@ public class Snapshot {
         if (value > this.max) this.max = value;
     }
 
-    // 평균 계산 (나눗셈 0 방지)
-    public double getAverage() {
-        return totalCount == 0 ? 0 : (double) totalSum / totalCount;
-    }
-
     /**
      * 현재 스냅샷이 제어 알고리즘에 사용할 만큼 충분한 데이터를 가졌는지 판단.
      * 데이터가 너무 적으면(노이즈) 알고리즘을 돌리지 않고 이전 상태를 유지해야 함.
@@ -50,4 +45,7 @@ public class Snapshot {
     public String toString() {
         return "Snapshot{cnt=" + totalCount + ", avg=" + getAverage() + ", valid=" + isReliable() + "}";
     }
+
+    // 평균 계산 (나눗셈 0 방지)
+    public double getAverage() { return totalCount == 0 ? 0 : (double) totalSum / totalCount; }
 }

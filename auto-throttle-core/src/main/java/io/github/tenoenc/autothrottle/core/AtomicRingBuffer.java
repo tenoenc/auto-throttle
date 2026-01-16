@@ -74,7 +74,5 @@ public class AtomicRingBuffer implements MetricRegistry {
         return number > 0 && (number & (number - 1)) == 0;
     }
 
-    public long[] getBuffer() {
-        return buffer;
-    }
+    public long[] getBuffer() { return buffer; }
 }
