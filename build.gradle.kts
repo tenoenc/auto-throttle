@@ -29,9 +29,6 @@ subprojects {
         // 신형 포털(Central Portal)로 배포
         publishToMavenCentral(SonatypeHost.CENTRAL_PORTAL)
 
-        // 서명(GPG) 자동화
-        signAllPublications()
-
         pom {
             name.set("Auto Throttle")
             description.set("Adaptive Concurrency Limits for Spring Boot based on TCP Vegas")
@@ -53,6 +50,20 @@ subprojects {
                 connection.set("scm:git:git://github.com/tenoenc/auto-throttle.git")
                 developerConnection.set("scm:git:ssh://github.com/tenoenc/auto-throttle.git")
                 url.set("https://github.com/tenoenc/auto-throttle")
+            }
+        }
+    }
+
+    // GitHub Packages 배포
+    publishing {
+        repositories {
+            maven {
+                name = "GitHubPackages"
+                url = uri("https://maven.pkg.github.com/tenoenc/auto-throttle")
+                credentials {
+                    username = project.findProperty("gpr.user") as String? ?: System.getenv("GITHUB_ACTOR")
+                    password = project.findProperty("gpr.key") as String? ?: System.getenv("GITHUB_TOKEN")
+                }
             }
         }
     }
