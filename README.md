@@ -149,7 +149,16 @@ The table below compares the server performance under extreme load.
 * If `QueueSize > Beta`: The system is congested. Decrease the limit.
 * Otherwise: Maintain the current limit.
 
+## Caveats
 
+### 1. Low Traffic Environments
+Auto Throttle is optimized for high-concurrency scenarios.
+If your traffic is very low (e.g., < 50 RPS), the algorithm might not collect enough samples (`MIN_SAMPLES`) within the default window (100ms).
+* **Solution:** Increase the update interval window size in configuration.
+
+### 2. JVM Warm-up Phase
+During the initial startup (Cold Start), request latencies may be higher due to JVM warmup (JIT compilation).
+The limiter might behave conservatively during this phase but will **automatically adapt** as the application stabilizes and latencies decrease.
 
 ## License
 
