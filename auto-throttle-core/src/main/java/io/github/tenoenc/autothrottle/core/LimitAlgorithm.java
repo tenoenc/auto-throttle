@@ -1,15 +1,21 @@
 package io.github.tenoenc.autothrottle.core;
 
 /**
- * 시스템 상태(Snapshot)를 보고, 다음 구간의 적정 동시성 한도(Limit)를 계산하는 함수
+ * A strategy interface for calculating the optimal concurrency limit.
+ * <p>
+ * Implementations should analyze the provided {@link Snapshot} (which contains
+ * statistics like RTT and throughput) and return a new limit value.
+ * </p>
  */
 @FunctionalInterface
 public interface LimitAlgorithm {
 
     /**
-     * @param currentLimit 현재 설정된 한도
-     * @param snapshot     지난 구간 동안 수집된 통계 (RTT, 요청 수 등)
-     * @return 갱신된 한도 값 (반드시 1 이상이어야 함)
+     * Calculates the next concurrency limit based on the system's performance snapshot.
+     *
+     * @param currentLimit The current concurrency limit.
+     * @param snapshot     The statistics collected during the last window (e.g., avg RTT, min RTT).
+     * @return The updated concurrency limit. Must be at least 1.
      */
     int update(int currentLimit, Snapshot snapshot);
 }

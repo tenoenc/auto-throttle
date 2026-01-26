@@ -31,11 +31,9 @@ Add the dependency to your `build.gradle.kts`:
 
 ```kotlin
 dependencies {
-    implementation("io.github.yourid:auto-throttle-starter:1.0.0")
+    implementation("io.github.tenoenc:auto-throttle-starter:1.0.0")
 }
 ```
-
-*Note: Replace `io.github.yourid` with your actual Group ID.*
 
 ## Usage
 

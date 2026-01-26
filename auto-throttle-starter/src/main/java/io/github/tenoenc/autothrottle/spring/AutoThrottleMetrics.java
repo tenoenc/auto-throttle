@@ -6,7 +6,14 @@ import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.binder.MeterBinder;
 
 /**
- * Micrometer에 리미터의 내부 상태(Limit, Inflight 등)를 노출하는 바인더
+ * A Micrometer binder that exposes the internal state of the limiter.
+ * <p>
+ * Registered Metrics:
+ * <ul>
+ * <li>{@code auto.throttle.limit}: The current dynamic concurrency limit.</li>
+ * <li>{@code auto.throttle.inflight}: The number of requests currently being processed.</li>
+ * </ul>
+ * </p>
  */
 public class AutoThrottleMetrics implements MeterBinder {
 
@@ -18,13 +25,14 @@ public class AutoThrottleMetrics implements MeterBinder {
 
     @Override
     public void bindTo(MeterRegistry registry) {
-        // 1. 현재 허용 한도
+        // 1. Expose current limit.
         Gauge.builder("auto.throttle.limit", limiter, AtomicLimiter::getLimit)
                 .description("Current concurrency limit calculated by algorithm")
                 .register(registry);
 
-        // 2. 현재 처리 중인 요청 수
-        Gauge.builder("auto.throttle.inflgiht", limiter, AtomicLimiter::getInflight)
+        // 2. Expose current in-flight requests.
+        // Typo fix: inflgiht -> inflight
+        Gauge.builder("auto.throttle.inflight", limiter, AtomicLimiter::getInflight)
                 .description("Current number of requests being processed")
                 .register(registry);
     }

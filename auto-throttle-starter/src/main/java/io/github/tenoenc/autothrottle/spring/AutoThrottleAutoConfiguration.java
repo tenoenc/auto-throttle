@@ -16,6 +16,13 @@ import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.core.Ordered;
 
+/**
+ * Spring Boot Auto-Configuration for Auto Throttle.
+ * <p>
+ * This configuration is automatically loaded when {@code AtomicLimiter} is on the classpath.
+ * It can be disabled by setting {@code auto-throttle.enabled=false}.
+ * </p>
+ */
 @AutoConfiguration
 @ConditionalOnClass(AtomicLimiter.class)
 @EnableConfigurationProperties(AutoThrottleProperties.class)
@@ -25,12 +32,14 @@ public class AutoThrottleAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean(LimitAlgorithm.class)
     public LimitAlgorithm limitAlgorithm(AutoThrottleProperties props) {
+        // Default to TCP Vegas algorithm with configured alpha/beta values.
         return new VegasLimitAlgorithm(props.getAlpha(), props.getBeta());
     }
 
     @Bean
     @ConditionalOnMissingBean(NanoClock.class)
     public NanoClock nanoClock() {
+        // Use system nano time by default.
         return NanoClock.system();
     }
 
@@ -40,17 +49,26 @@ public class AutoThrottleAutoConfiguration {
         return new AtomicLimiter(algorithm, clock);
     }
 
+    /**
+     * Registers the {@link AutoThrottleFilter} with the highest precedence.
+     * <p>
+     * <strong>Why Highest Precedence?</strong>
+     * The throttle filter must execute before any other resource-intensive logic
+     * (e.g., security checks, parsing, database access) to effectively protect the server
+     * and reject excess traffic as early as possible (Fail-Fast).
+     * </p>
+     */
     @Bean
     public FilterRegistrationBean<AutoThrottleFilter> autoThrottleFilter(AtomicLimiter limiter) {
         FilterRegistrationBean<AutoThrottleFilter> registration = new FilterRegistrationBean<>();
 
         registration.setFilter(new AutoThrottleFilter(limiter));
 
-        // 모든 URL 패턴에 대해 적용 (나중에 프로퍼티로 조절 가능)
+        // Apply to all URL patterns by default.
+        // TODO: This could be made configurable via properties in the future.
         registration.addUrlPatterns("/*");
 
-        // 필터 순서 설정
-        // 가장 먼저 실행되어야 불필요한 연산을 막을 수 있음 (Ordered.HIGHEST_PRECEDENCE)
+        // Set order to HIGHEST_PRECEDENCE to ensure it runs first.
         registration.setOrder(Ordered.HIGHEST_PRECEDENCE);
 
         return registration;

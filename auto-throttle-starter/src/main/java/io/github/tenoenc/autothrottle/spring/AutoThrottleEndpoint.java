@@ -7,6 +7,14 @@ import org.springframework.boot.actuate.endpoint.annotation.ReadOperation;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * Exposes Auto Throttle runtime information via Spring Boot Actuator.
+ * <p>
+ * Endpoint ID: {@code autothrottle}
+ * <br>
+ * Default Path: {@code /actuator/autothrottle}
+ * </p>
+ */
 @Endpoint(id = "autothrottle")
 public class AutoThrottleEndpoint {
     private final AtomicLimiter limiter;
@@ -15,12 +23,17 @@ public class AutoThrottleEndpoint {
         this.limiter = limiter;
     }
 
+    /**
+     * Returns the current state of the limiter.
+     *
+     * @return A map containing 'limit' (current capacity) and 'inflight' (current load).
+     */
     @ReadOperation
     public Map<String, Object> info() {
         Map<String, Object> info = new HashMap<>();
         info.put("limit", limiter.getLimit());
         info.put("inflight", limiter.getInflight());
-        // 필요하다면 알고리즘
+        // Additional algorithm details can be exposed here if needed.
         return info;
     }
 }

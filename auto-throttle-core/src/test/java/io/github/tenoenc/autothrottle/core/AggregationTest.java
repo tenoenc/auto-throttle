@@ -7,55 +7,56 @@ import static org.junit.jupiter.api.Assertions.*;
 public class AggregationTest {
 
     @Test
-    void testNoiseFiltering() {
+    void should_MarkSnapshotAsUnreliable_When_SampleCountIsLow() {
         // given
         Snapshot snapshot = new Snapshot();
 
-        // when: 데이터가 3개뿐일 때 (MIN_SAMPLES = 5 미만)
+        // when: Adding samples fewer than MIN_SAMPLES (5)
         snapshot.add(100);
         snapshot.add(100);
         snapshot.add(100);
 
-        // then: 신뢰할 수 없는 데이터로 판단해야 함
-        assertFalse(snapshot.isReliable(), "샘플이 적으면 신뢰할 수 없음");
+        // then: Should be treated as noise (unreliable)
+        assertFalse(snapshot.isReliable(), "Snapshot should be unreliable due to insufficient samples.");
 
-        // when: 데이터를 더 추가해서 5개가 넘어가면
+        // when: Adding more samples to exceed the threshold
         snapshot.add(100);
         snapshot.add(100);
-        snapshot.add(100); // 총 6개
+        snapshot.add(100); // Total 6 samples
 
-        // then: 신뢰할 수 있음
-        assertTrue(snapshot.isReliable(), "샘플이 충분하면 신뢰할 수 있음");
+        // then: Should be reliable
+        assertTrue(snapshot.isReliable(), "Snapshot should be reliable once minimum sample count is met.");
     }
 
     @Test
-    void testWindowAggregationSimulation() {
-        // 시간 경계(Boundary) 시뮬레이션
-        // 실제로는 Limiter 클래스 내부에서 시간을 체크하지만,
-        // 여기서는 논리적으로 '구간'이 나뉘는지 테스트합니다.
+    void should_AggregateDataCorrectly_AcrossTimeWindows() {
+        // Simulation of logical time boundaries.
+        // Verifies that the ring buffer correctly collects data between cursors.
 
         AtomicRingBuffer buffer = new AtomicRingBuffer(1024);
         Snapshot snapshot = new Snapshot();
         long lastCursor = 0;
 
-        // --- 구간 1 (0ms ~ 100ms) ---
-        // 트래픽 발생
-        for (int i = 0; i < 10; i++) buffer.add(10); // 10ns 10번
+        // --- Window 1 (e.g., 0ms ~ 100ms) ---
+        // given: Traffic generation
+        for (int i = 0; i < 10; i++) buffer.add(10);
 
-        // 집계 수행
+        // when: Aggregating stats
         lastCursor = buffer.collect(snapshot, lastCursor);
 
+        // then: Valid stats expected
         assertTrue(snapshot.isReliable());
         assertEquals(10.0, snapshot.getAverage());
 
-        // --- 구간 2 (100ms ~ 200ms) ---
-        // 트래픽이 뜸함 (노이즈)
-        buffer.add(50); // 1건 추가
+        // --- Window 2 (e.g., 100ms ~ 200ms) ---
+        // given: Low traffic (Noise)
+        buffer.add(50); // Only 1 request
 
-        // 집계 수행
+        // when: Aggregating stats again
         lastCursor = buffer.collect(snapshot, lastCursor);
 
+        // then: Should be ignored due to low sample count
         assertEquals(1, snapshot.totalCount);
-        assertFalse(snapshot.isReliable(), "구간 2는 샘플이 적어서 무시해야 함");
+        assertFalse(snapshot.isReliable(), "Window 2 should be ignored due to low sample count (Noise).");
     }
 }

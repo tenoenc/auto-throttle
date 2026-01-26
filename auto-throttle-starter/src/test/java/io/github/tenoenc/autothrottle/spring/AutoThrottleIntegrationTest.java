@@ -19,7 +19,7 @@ import static org.assertj.core.api.Assertions.*;
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
-                "management.endpoints.web.exposure.include=*", // 모든 Actuator 엔드포인트 노출
+                "management.endpoints.web.exposure.include=*", // Expose all Actuator endpoints for testing
                 "management.endpoint.health.show-details=always"
         }
 )
@@ -35,26 +35,26 @@ public class AutoThrottleIntegrationTest {
     AtomicLimiter limiter;
 
     @Test
-    void testThrottleFilter() {
-        // 1. 정상 호출 확인
+    void should_ProcessRequest_And_ReflectMetrics_When_Called() {
+        // 1. Verify normal request processing (Green path)
         ResponseEntity<String> response = restTemplate.getForEntity("/test", String.class);
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody()).isEqualTo("ok");
 
-        // 2. 리미터가 실제로 카운팅을 했는지 확인 (Inflight는 0이어야 하고, Limit은 초기값 이상)
+        // 2. Verify that the Limiter state is active
+        // Ideally, 'inflight' should be back to 0 after the request, and 'limit' should be initialized.
         assertThat(limiter.getLimit()).isGreaterThan(0);
     }
 
     @Test
-    void testActuatorEndpoint() {
-
-        // when: /actuator/autothrottle 호출
+    void should_ExposeLimiterMetrics_ViaActuatorEndpoint() {
+        // when: GET /actuator/autothrottle
         ResponseEntity<Map> response = restTemplate.getForEntity("/actuator/autothrottle", Map.class);
 
-        // then: 상태 코드 200 OK 확인
+        // then: HTTP 200 OK
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
 
-        // then: JSON 응답 본문에 'limit'과 'inflight" 키가 있는지 확인
+        // then: Verify JSON body contains key metrics
         Map<String, Object> body = response.getBody();
         assertThat(body).isNotNull();
         assertThat(body).containsKey("limit");
@@ -63,12 +63,13 @@ public class AutoThrottleIntegrationTest {
         System.out.println("Actuator Response: " + body);
     }
 
-    // 테스트용 미니 앱
+    // Minimal Spring Boot Application for Integration Testing
     @SpringBootApplication
     @RestController
     static class TestApp {
         @GetMapping("/test")
         public String test() {
+            // Simulate processing time (10ms)
             try { Thread.sleep(10); } catch (Exception e) {}
             return "ok";
         }
