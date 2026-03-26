@@ -20,6 +20,8 @@ Auto Throttle implements the **TCP Vegas congestion avoidance algorithm**, adapt
 * **Fail-Fast:** Immediately rejects excess traffic with `HTTP 503 Service Unavailable` to prevent cascading failures.
 * **Observability:** Seamless integration with Spring Boot Actuator and Micrometer.
 
+<img width="100%" alt="Image" src="https://github.com/user-attachments/assets/fff431e9-34b6-422e-a185-63b8176f8558" />
+
 ## Requirements
 
 * Java 21 or later
